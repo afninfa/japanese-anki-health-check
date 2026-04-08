@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Anki Kanji Health Check</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;1,9..144,300&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f0f0f;
+    --surface: #1a1a1a;
+    --surface2: #242424;
+    --border: rgba(255,255,255,0.08);
+    --border2: rgba(255,255,255,0.14);
+    --text: #e8e4dc;
+    --text2: #888;
+    --text3: #555;
+    --accent: #c8b87a;
+    --accent2: #8bb4c8;
+    --accent3: #b8c888;
+    --danger: #c87a7a;
+    --font-display: 'Fraunces', Georgia, serif;
+    --font-mono: 'DM Mono', monospace;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    min-height: 100vh;
+    padding: 2.5rem 1.5rem 4rem;
+  }
+  .container { max-width: 820px; margin: 0 auto; }
+  header { margin-bottom: 3rem; }
+  h1 {
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 5vw, 3.2rem);
+    font-weight: 300;
+    color: var(--text);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    margin-bottom: 0.5rem;
+  }
+  h1 em { font-style: italic; color: var(--accent); }
+  .subtitle { color: var(--text2); font-size: 12px; line-height: 1.6; }
+
+  .drop-zone {
+    border: 1px dashed var(--border2);
+    border-radius: 4px;
+    padding: 3rem 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    background: var(--surface);
+    position: relative;
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(200,184,122,0.04);
+  }
+  .drop-zone input[type=file] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .drop-icon { font-size: 2rem; margin-bottom: 0.75rem; opacity: 0.4; }
+  .drop-label { color: var(--text2); line-height: 1.8; }
+  .drop-label strong { color: var(--accent); font-weight: 500; }
+  .drop-hint { font-size: 11px; color: var(--text3); margin-top: 0.5rem; }
+
+  .file-loaded {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    margin-top: 0.75rem;
+  }
+  .file-loaded .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent3); flex-shrink: 0; }
+  .file-loaded .name { color: var(--text); flex: 1; }
+  .file-loaded .size { color: var(--text3); }
+  .btn-clear { background: none; border: none; color: var(--text3); cursor: pointer; font-family: var(--font-mono); font-size: 12px; padding: 0 0.25rem; }
+  .btn-clear:hover { color: var(--danger); }
+
+  .run-btn {
+    margin-top: 1.5rem;
+    width: 100%;
+    padding: 0.85rem;
+    background: var(--accent);
+    color: #0f0f0f;
+    border: none;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    letter-spacing: 0.04em;
+    transition: opacity 0.15s;
+  }
+  .run-btn:hover { opacity: 0.88; }
+  .run-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  #results { margin-top: 3rem; display: none; }
+
+  .divider {
+    border: none; border-top: 1px solid var(--border);
+    margin: 2.5rem 0;
+  }
+
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 2.5rem;
+  }
+  .metric {
+    background: var(--surface);
+    padding: 1.25rem 1rem;
+  }
+  .metric-label { color: var(--text3); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 0.5rem; }
+  .metric-value { font-family: var(--font-display); font-size: 2.2rem; font-weight: 300; color: var(--text); line-height: 1; }
+  .metric-value.good { color: var(--accent3); }
+  .metric-value.warn { color: var(--accent); }
+  .metric-value.bad { color: var(--danger); }
+  .metric-sub { color: var(--text3); font-size: 10px; margin-top: 0.4rem; }
+
+  .section-title {
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    font-weight: 300;
+    font-style: italic;
+    color: var(--text2);
+    margin-bottom: 1.25rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .chart-wrap {
+    position: relative;
+    width: 100%;
+    margin-bottom: 2.5rem;
+  }
+  .chart-wrap canvas { display: block; }
+
+  .band-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 2.5rem;
+    font-size: 12px;
+  }
+  .band-table th {
+    text-align: left;
+    color: var(--text3);
+    font-weight: 400;
+    letter-spacing: 0.06em;
+    font-size: 10px;
+    text-transform: uppercase;
+    padding: 0 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .band-table th.r { text-align: right; }
+  .band-table td {
+    padding: 0.6rem 0.5rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text2);
+    vertical-align: middle;
+  }
+  .band-table td.band-name { color: var(--text); }
+  .band-table td.r { text-align: right; }
+  .bar-cell { width: 120px; }
+  .bar-bg { background: var(--surface2); border-radius: 2px; height: 6px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 2px; background: var(--accent2); }
+  .pct-text { font-size: 11px; color: var(--text); }
+
+  .missing-section { margin-bottom: 2.5rem; }
+  .missing-grid { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 0.75rem; }
+  .kanji-chip {
+    display: inline-flex; align-items: baseline; gap: 5px;
+    padding: 4px 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    font-size: 15px;
+    color: var(--text);
+    line-height: 1.3;
+  }
+  .kanji-chip.urgent { border-color: rgba(200,120,120,0.3); background: rgba(200,120,120,0.06); }
+  .kanji-chip .rank-badge {
+    font-size: 9px;
+    color: var(--text3);
+    font-family: var(--font-mono);
+    letter-spacing: 0;
+  }
+  .missing-note { color: var(--text3); font-size: 11px; margin-top: 0.6rem; line-height: 1.6; }
+
+  .verdict {
+    background: var(--surface);
+    border-left: 2px solid var(--accent);
+    padding: 1rem 1.25rem;
+    border-radius: 0 4px 4px 0;
+    line-height: 1.8;
+    color: var(--text2);
+    font-size: 12px;
+  }
+  .verdict strong { color: var(--text); font-weight: 500; }
+
+  .legend { display: flex; gap: 1.25rem; flex-wrap: wrap; margin-bottom: 0.5rem; font-size: 11px; color: var(--text3); }
+  .legend span { display: flex; align-items: center; gap: 5px; }
+  .legend .swatch { width: 10px; height: 10px; border-radius: 1px; flex-shrink: 0; }
+
+  .attribution {
+    margin-top: 4rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text3);
+    line-height: 1.8;
+  }
+  .attribution a {
+    color: var(--text2);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .attribution a:hover { color: var(--accent); }
+  .attribution strong { color: var(--text3); font-weight: 500; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Anki Kanji<br><em>Health Check</em></h1>
+    <p class="subtitle">Drop your exported Anki deck (plain text) to see how your mined cards<br>stack up against the Wikipedia kanji frequency list.</p>
+  </header>
+
+  <div class="drop-zone" id="dropZone">
+    <input type="file" id="fileInput" accept=".txt">
+    <div class="drop-icon">&#x6f22;</div>
+    <div class="drop-label">
+      <strong>Drop your Anki .txt export here</strong><br>
+      or click to browse
+    </div>
+    <p class="drop-hint">Plain text export — the tab-separated format from Anki's File → Export</p>
+  </div>
+  <div id="fileInfo" style="display:none"></div>
+  <button class="run-btn" id="runBtn" disabled>Analyse deck</button>
+
+  <div id="results">
+    <hr class="divider">
+
+    <div class="metrics" id="metricsGrid"></div>
+
+    <p class="section-title">Coverage by frequency band</p>
+    <div class="legend">
+      <span><span class="swatch" style="background:#8bb4c8"></span>Your deck</span>
+      <span><span class="swatch" style="background:#333"></span>Not yet in deck</span>
+    </div>
+    <div class="chart-wrap" id="barWrap" style="height:260px"><canvas id="barChart" role="img" aria-label="Stacked bar chart of kanji coverage by frequency band"></canvas></div>
+
+    <div class="band-table-wrap">
+      <table class="band-table" id="bandTable">
+        <thead>
+          <tr>
+            <th>Band</th>
+            <th class="r">Deck</th>
+            <th class="r">Total</th>
+            <th class="r">Missing</th>
+            <th class="r">Coverage</th>
+            <th class="bar-cell"></th>
+          </tr>
+        </thead>
+        <tbody id="bandBody"></tbody>
+      </table>
+    </div>
+
+    <div class="missing-section" id="missingSections"></div>
+
+    <p class="section-title">Verdict</p>
+    <div class="verdict" id="verdictBox"></div>
+  </div>
+</div>
+
+    <footer class="attribution">
+        <strong>Data attribution:</strong> Kanji frequency data is sourced from
+        <a href="https://scriptin.github.io/kanji-frequency/" target="_blank" rel="noopener">kanji-frequency</a>
+        by <a href="https://github.com/scriptin" target="_blank" rel="noopener">Dmitry Shpika</a>
+        (<a href="https://github.com/scriptin/kanji-frequency" target="_blank" rel="noopener">GitHub</a>),
+        licensed under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>.
+        The data used here is the Wikipedia characters dataset (<code>wikipedia_characters.csv</code>),
+        modified by embedding it as a frequency-ordered string and adapting it for in-browser use.
+        This use does not imply endorsement by the original author.
+    </footer>
+</div>
+
+<script>
+// ── EMBEDDED FREQUENCY DATA ───────────────────────────────────────────────────
+// Kanji in Wikipedia frequency order, rank 1 = index 0.
+// Source: wikipedia_characters.csv (CJK Unified Ideographs only)
+const FREQ_STRING = "年日月大学本人中一出国部会作行地時子上場市後第生合発社戦田代東事名用成長同者山高道間開手分立業新目定所川関校的文前小県自内動入和主通家下物連公設野外線現全回体車画語当方化選演平初対世女町最式村明教表島京機原記以在性号力法書駅曲三理北見海神送放軍実数位員編期度組西多区番元勝水使品加治特要経正制務役木版身政金売共民取都能注受参点二来南話美王気結電置面形活集昭録知界議持運団脚映優科信変史等工言口院際天楽館鉄音不空指交賞州歴井次有始登続付路士英保重歌隊店決郎台藤利岡太終男他進別近任収約型研産改術報松屋意石得相系古流心造広計向製考義解属総建究称少局無宮安権郡移園門基真城撃様彼転営馬説朝再監光直支育球技域武伝橋死愛統種可項備両由谷存福配土引格常止官果施呼調強装崎典戸題構佐試寺督命府兵情先状協師声料着族住阪白論万紀吉達降字退星起江親乗判問示覧管色認側周千葉件各劇良応著限巻予風修十更反打半株室青艦影類防載津級資陸担河過夫攻殺歳四領催久査父頭花司食条観投衛込旧列党図思器森復商継沢異船切接伊庫挙曜専詞座味競害完念速係離争米母概態規医春落八導委助護独献急供洋魔衆量横展企今容介将博感及提職黒足浜敗港林与好準派験五追去済告波単航残円芸増例含走質岩授評渡創令廃御央警率奈火述聞病仕省富志飛守素了氏尾必張清末像消闘失帝友雄確夜宇根皇章之響個辺堂徳想破程赤蔵刊比客秋帰勢香価補断舞銀細従坂籍帯境差未卒階般視里首興泉講旅丁就賀倉察非象永宗略歩豊悪織績誌角築検訳除若停聖陽頃越秀玉環財街併丸短写源児祭宝証農婚九留樹段課居照深右弾早然読満革左援週毎便割池跡夏販房難健遺負模超案瀬整推低働極積標求薬習盤振群何伴弟描談替浦徒幸策採材絵精板換奏効獲延養植算遠妻望療突幕百臣寄射翌竹私違鳥華郷複恋岸宿囲甲裁亡塚沿功舎藩血六温刑彦庁休処貴席労端徴静兄撮娘盟布契密諸識草羽為故宅姿返普敵給順康七漫息輪被輸釈乱邦抜恵景壊絶枚服昇減爆拠砲熱圧仮節探雑紙捕麻険扱也頼背戻候宙辞倒許副鈴覚仲散操抗具鹿弘韓熊況幼承災襲因滅遊印湾脱途締救並待忠栄訪執龍宣掛障則値測閉老阿練駆適夢兼罪酸費喜掲激盛傷沖矢隣弁症怪竜揮搭岐善拡貨隆閣至染仁幅秘巨酒似躍庭霊片姫携君紹層札審逆雲軽詳仏慶裏幹吹票須剣騎祖桜智筆亜鮮妹黄敷純震犯希詩裕律奪湖占奥殿衣杉仙勤爵暴顔逃露易誕雪固請笑俳憲稲巡塁買銃伸姉危避署沼禁迎哲郵駐没額批惑臨焼秒魚丘毛鶴縄伯浅塩依俊範唱牧暗納潟荒肉澤季孫税那茶混願摩骨双距陣堀砂討折億鬼券冬苦厚柳緒隠我余維枠童婦犬漢聴孝刻飯訴茂埼互液唯押緑疑舗礼吸圏欧鑑否浩均誉免申冷捜雅譲益誘既勇雨油欠潜胞侵奇獣炎触縁濃乃翼恐択潮湯抱彩燃寿倍飾梨弱快挑束遣誠菜荷寛刀損封融旗壁梅訓輝架還雷責招較腕核鎮筋繰幌繁虫厳儀軌払拓頁塔己縮答豪柄盗才齢到穂昌亀撤紅髪晴床敬菊弥暦貫乳底芝覇午脳篇浮渋索崩飲阜簡偵患殊冠募託羅眼歯刺枝絡遅鏡牛宏析冒包購笠摘墓丹致夕暮閲鎖排征皮貞充尊嫌杯朗針却迫姓涯滝泰佳威畑尚彰附綱稿奉岳賢困吾即診窓礎袋妖衝械貢伏忍鉱轄渉賛敏徹剤沙踏祐勲傾翻嘉幻咲桃栗誤艇陰棋看炭駒菌幡剛芳如斎謀掘鳴輔網往茨譜沈埋誰毒浪縦斉序削庄趣垣李怒灯緯氷耐筑猫謝僚紫箱峰軸披微漁棄旭洞句脈顧獄鎌括墳狭柔坊頂塾銅冊呂穴裂抑菱祝唐葬輩荘雇僕詰麗陥糸悟脇卓豆借祥憶洗又啓迷尋旬棟干腹欲恒嶋届蓮拳飼狙拒該妙綾痛径逮栃祉浄俗魂緊玄晶償洲隻踊贈逐偽桑隔刷顕筒翔弦拝鋼乙尉虎泊菅狩克謎眠騒塗柏戒悲挿煙淳紋棒柴仰債帳貸滑溶滋亭遷喫亮陵薄慮揚昼賃殖稚享遂尻桂磁硬浴哉奴胸透篠奨僧禄捨廷碑竣琴葛蘭侯柱磨勧尽繋瑞斗撲巣滞卵曽抵梁狂涼珍闇鷹慎塞銘寝握随嵐蒲朱傘呉辰國培恩蘇郊促斜弓添肥幾耳劉悩曹覆甘妃稼邸崇叙遭怖徐耕隷丈熟箇狼訂乾賊蒸悠召淡圭斬桐遇珠斐萩薩励陳晩銭肩旋貿媛纂函誇侍臓阻霧疾卿辻摂旨紛畿瞬倫邪慣皆謡峠寒偶匠俺晋糖凡澄罰粉孤預控猿努扉頻敦晃溝汚勉貝駿昔泳懸潤磯昧嫁叢菓膜貧忘措恭后呪涙貯雀虐緩粒宰驚栽堤堅掃磐逸舟灰軒烈謙垂錦釣戯循釜酷衰班屈曖椎慈劣彫槻秦媒鼻脅峡符薦簿猛噴苗擁魅軟幽傍勘辛桁渓泣挟伐靖訟聡紗脂倶祈拘准唄需麦祀懐薫陶赴寮旦杏篤履抽尼坪牡墜藝寧虚酵笹誓叔猪腰偏鍵搬慰黙芽匹屯妊慢應犠盾曰秩琉條幣禅妨践掌玲蛇帆廣瓦零諏昆鋭慕壇刃堺叩暁暫宋芦勃湘泥籠庶蜂湿藍瞳浸牲嗣喚諭學寸鐘鳳鼓粋揃宜橘虜莉傑讐嬢腐淵碁揺炉帽俣虹勅楠扇吐酔疫蹴洪叫肢壮跳巳凍羊窪佑舶遥蓄萌郭繊癖眞魏殻蒼偉兆唆但刈隅鷲硫呈腫梶葵隼裸喪胴囚馴庵朋貌綿鍋讃枢烏尺瓶胡凶憧蓋棚嶺畜忌猟奮舌瑠噂疎淀雰絞播岬稀趙暖鴨隈髄肺茎孔拾櫻擬縛逢栖盆是牽毅霞湊腸肌拍穏於獅墨菩楼懲尿累伎粘牙郁焦膨笛巧廊鍛樋帖剰靴畠漏惨娠樽砕癌隙蝶夷敢肝頑悦賠捉牝邑歓賭賜杜駄柿喧砦股錬剥楊渕袖嘘潔哨洛遼閥陀鳩膝荻哀臭喰膚扶峯鞍麓濱漠朽衡牟粛殴璃酬鶏醒乏窟弧髙燥曾憎缶肖粧壌叶茅抄苑嫡鋳槍棲冥嘩宴椅爪醸痴潰僅捧貼廻汽臼癒萬睦詐樺汁冨耶粟欺玩箕褐辱椿巴胆鉛勾悔欄燕拐甥痕厩鞭瀧譚綴絆疲悼吊輌稔錯凌糧礁崖帥綬恥穀枯胎碧褒抹詠窮雌溜甚諾紳煮廠坑豚拉絹遮畳黎暇紺紡憑串汎稽把湧鎧憂逝愚寅遍嘆亘俵漂妄廉淑姦据漆鴻婆罠惚舘挨殆拶鐵汗胤朴腺纏儒斑惣瘍灘婿鵜舷掴宛骸鵬麺戚恨餌堆懇鄭遡祇杖彗跨顎凱卑撰倣矛榊睡奔蒙凝楓榎曳漬昨擦憩淫鯨蛍迅戴擢巫鉢汐迦麟伽諦縫盲胃凄噛貰脊薇匿頓丞卸妥塊填爾狗槽註凛狐薔窒輿粗壱杵挺泌董梓飢尖襟其裔腔喋灌柚赦枕鱗翠詣餅惹踪揆韻仇塵冶惧腎蜜餓堕藻廟庇侶騙耗楚泡溺騨翁燈珂樫妬姻汲苫傭挫惜紘榴遽畔皿梱茜縣曇堰閑綻歪窯煉賄錠叱辿牢叉吏嘱慌鮎渚扮汰寂醤濡旺會鬱殉鷺肪欽芙庸齋邉霜唇酢嫉暢膳溢巌斯袁飽壺俸葺聘渦諜蚕峙坐穫拷蓉忙芥嚢儲哺桶剖喉熙兎裳騰鍼邊壬茉侠嗜稜肯釧凪桓滴圓牌轟嶽緋亨髭痺匡棺撫壕濁鈍喬芋鰭吟芹租魁綺昏兜諱魯伍頸宍檀璧楕叡玖慧暑或瓜莫屍噌琶云焉斧梗艶琵肘怨檜倭宕肇禍紐匂汪孟惟峨厨娯只眺舵嬉諫蛮壽麿冴賦櫛揖仔聯矩沸姪諡憤團乞謳弐猶銚弄站爺侮柊輯閃榛錐厄桟尹濯薙麒朔瀕蕭蔣雁醐甫硝漱琢賑彬戊雛曼杭蔽醍嵩禎捻諮絢怜脆呑埴眉釘怠濫彌隋奄棘蝦咸崔荼鮫襄禰某巾卯罵炊謹允錫筐嵯摺蔑按閏徽賓屏梵苛遙坦渇藪訃蹟冗馳渠怯漑瑛晒喩毘蟹丙蔭溪迂螺擲佛蔡榮實蟲蛛喝鉾昂蜀采翅愁撒柵彷鼠弊栓窺罹款捷机欣呆繕煽埠蜘凸裾祷楯此堪侑陛蹄升靭廿瞭芭來矯詔峻姜覗宵糾弔蕉傳皐扁彙贄逓淮綜這凰冑麹颯爽勁狸輛曙祠蹊隕鯉晦圀礫袴噺囃縞惠挽萱搾憐豹寵駕掟橙窃馮芯鍾楢苔逗煩崗雫葦詫遵娼氾澪鞘耀愉槇砥盧篭咽斡韮妓寡謁灸蓬漸吻醜槌鋒伺苅煎梢殲凹煌梯揶揄蔓諒夭汝聚址祓糞斥繭浙渥粕痙邱罷竪攣痩砺勿而婁薨揉櫓媚葡勒偕蘆閤湛櫂塙頬柑濤饉蒔薗叛傲腿且碓蛙孵脩爬膵拗喘餐寓爛妾于蕎邨齊渾鄧箸墟愕蕃臆槙嶼穣饗詮馨塀荊剃攘矮躊躇陪毀閻蝕弼菖穿與轢椋躯盃涌堯薪鼎姑蕨墾碩鯖庚丼虔訛焚膿祢鋸橿傀堵鸞錆拭痢拙灼漕窩刹誅冤桔荏儡膠酪嗅巽疹萄佃跋嵌丑梧凜翰蟻戮狛游檎雍竿趾耆柾飴蛋洩范傅胚曝栞厭證堡悶煕箔匣戎冲鐸疆姚臥榜桧謂艤漣隘邇沌蔦掻做嬰卜鯛慨畝亥珊亞鹵屑閔蛭舜崑膏炸暉嘴皓潘吠咎濠繍嘲虞氣遜鞠惇燐訊痘鹸彿腱洒筈猥悌瓊羨絨禿鴉當泄疏諧慄瑚拼辣疱潭畏偲緻沃藏陝樂裟頒迭螢彭鏑琳炒捏甦嘗鰐蝉圳狡璋箭穆咬佩茹秤豫蕩肛塹簾酎臺垢犀蝋俯碇顆捗賽韋熾萼甕欅毬韶嘔賈浚櫃糟遁贅殷唾軋瞑洸鍬滸焔昴熹脛聰僑舐隧寇肋迄袈巷奠訣奢徨餃耽蕪埜劾貪囁賂冪朧蓑屠棍鋏酋磔琥宥饅鳶杷竈赫鞆鉤薮吃芒娶兒蒐贋苻翡鷗舒姶珀渤穢裴眩塑壷讀疼劔瘤獨頌蚊瀋寶邁聲衙德糠祚嗚岱咳詢菟柘筏疇酉桝雉萎檻囮謗紆莱衷燦莢苺珪鰓賤甑苞樟濾誹髏頚髑塘哈饌粥燻禮藁蛟卍鰻毫咋牒阮瑤崙睨肆號籾孕譽綸奎鎬懿宦蜷鴇忽涛聾圃靱雙稙箋竄捌斌靡倖賣旛鑽碕祟瑜戌饒倹套經訶瘡圖澁尤黛顛涅廓幇嚇槃哭姐掠抒竺碗斤鞄瞼咄岑萠撥嬪攫酌珈贖禾鴎厥掩蔚邂筧稗膣簒廖兇篆閩亦枇楔擾些衍逅姥廬椒坡你逼桿灣蜃琲鶯糊袂徊掾呟繪徘繚悉腋漿捺唖懺薛匈埔厘拮毯嶌霖麾彪錘拿枡飄璽晰沓憚禽戰錨燭羞椙廆瀞謄凧沫滉莞孚茸蕾猷燿淘錮攀蕊總蛾鮭楡乖弛衞份摯疋彅鵠穹咤紬攪劫諌瀾憾佼梟舛臀炳伶釉怡茄盈逍蝙坤鯱嵜碍畷冀椀瓢箒鐡鯰嗟猾眷晟逞剱吼箏啄轍渫蝠捩鉉邯迪禹托蠣瑳捲煥柩虻瓚汀秉溥娩餡冉仗檗絲裡赳輜笙弩鍔竇煬褻侃宸辟鏃誦羹硯齧蟄仄嚆蠍寬巖祁蛸恕踵鈔咆綏鍮砧郞驍尭誼椰亢箪澎膀澳幀筵槐迹鰹恰丕泗鬘鱒肴渭泪關奸礒穎謬閘茗篩貶菫蛯檸昊棠胱檬昶哥嬌匝讒剋糀淋掬瞞隴棗躙煤并帛蛹絃獏蓼狄荀撹凉滬俘瀑惰峴咫疵襖曺鬚滄焙鋤匐儚糎緬枷瑕蹂銑拌笏褌娥簗幟弗魎兗佇戟樅諍體挾鐙萊澱奕旱鵡烙僭憬肱濵雞廈礪拵癬什俠婢輻贔祗脾卦柯蘊贛檄恆發哮苟沂邵楳癸謨楷艘奘畦瞰彡晨蜥棹菰睿卷屓驤蜴洙瓌髷蒜魃剌駁夙魍晁羌嬬孜叟卡菲滓鋪衿呵舩翳樓兪咥駝乎諺駈趨闍甜鋺烹槎驃已浬禧鮑炯鵄鄲耿徠笥冰飫霍凋栢處埃匍徂椚魄斂杓葭僻苧黌栂窄將涵涜帷龔咩倦蕗俄艀剪戍輓闕燁粂杢恣礦粲俟黑蟠酊闊枳靳瑪倪盪狽燮鵺痍鴫敖樊晏滲區睾墺痣絣屁葱戀祺駱龐權扈躬恍寨苓慟篝涸酩敞杣欒炙籃漉櫟辯尸褚崋椛對篋閨咀憫矧愍獺庾痰莽抉躾弉濟鈑曉纒郝蜻卉靈豐艾截臧槨雜琅鴛篁偃偈鬆戔浣閭畢醇几鋲儂撓錣螂鄰婉酘瑩俎瘴舅嚥檣鮒菴櫨竟箚晞霹廼詛樵瀉棣琦餘閾羲頴薯謐鈿吳觀躰鄙筰痔脹袢們倚籐鄴汾聳潁翟釋訥軻窈蟷壹彧鉦鎚厦唸稠獰霰鍍絅瑾鸚掖盞癪癇驕匙槿旻蠕薊黃淹磊禕籟效鈞喇暎杞杼蒋歿藉疽旁濊瞥雹匪鴦淺蝸奚襷茲恪洵顯葯谿變悸愾襞澗杁驪聊潼齟齬蝿腓專襦翊矜繆蛉窠摸靂畫馥訝茫籔諷吽萇晧沐跪痒衾鰺啖暠邈暈彊刎軛鄒郴藺軾臂餞琪无禊昱籬槓瑁笘郤鰯褥繡瑶愼恂鑢菁邀聶甸霆貂匁搗舍燧璐喀惡鴈斃熔儘嚼嶝芬閼餉頤霸綝兀种戈臍粤撞靜网鶉粁穐鑁蘋籌躁剽媽稷皺婷敲喆鉞躅奧亙毗筍賎鉈劍楫攷鮨玻鈎榑翫僊煒麩假沛馗砌陴躑飜熈娜涇甄彝粍瓏攸駸朦釐箴猜慇懃瞻綽邏磋淆譯舫撼毓弑褪錢鑓邢龕頗嗽蛆樗涎猴炮紇褶曠湍覺髣髴騏羿皝爲黍繇悍鬨寳嗤羯醗夾埒铁悳嘯撚辨橈鎭齎恫數鹹滕靄弌涿臚徇潴滎珉歎惺笈缺撈麝舉繹瀛渝澹詹匯胥漳郢峅瘢勳驟臘籤瓘蟇蠢鵞猩劃鉋躓敎萍琬汶芮錚朶猗盂銜搦燎蛎朕罫劈鱈疣鑿葎娟琮邕鑼噶鰊枻娃嚴腑禦蘂侈燼烝杰壩續顒羆營隍幢哩詈蒴鬣陟鴬榕蔗炫鹽氐瑭蕙艸榘潙鞮飡醫皖罐輳縊逵緘陞岷屬郯勱碌橇逡懋崚諄捐賁屎斛蛤华佚东皋琛柞僉荃郛觜蠅秣誣芻筥暹曄疸黨嶷孩妤帚巒鄂慾緞鼈刳俱轉甯拯嚮邽琨婕瀚栩憺穗鎗洽闢楨侘滿鯵銛嬲杮蜚莒珥掏儁梛稟繫攝鈷璉蜆淸瀟啼祜娑楮譴雕峪茘髻洮跗竃沮窘碼鄱枋鞋泓暘龗啜臈邴漲彤赛笄懌鋌淨甌兌簸簑訌譬歇溯廂晤亰瀘长熨价銖玫崧广哱厲醉恢萢衢濬沁誥鵯忖點砒黔乐爻辜蠡坏滇兔杲刘劭杂鰍綵仍忻詭簪瑣夔侭蠊釦隨犂禱矗擱筠韜衒稱旌烽洌辭叭邛愧箆沔佟麼舊寫磾晉珸姨嬴陈酈悰泯厓歐线抛嘀垪悴畸俶糜鏞栁誨烟张頡彎泛隗汕蘚蝗跏嫦彥氈朮獎淇歆呰蠱矣儼渟繞莎盒龜厝褄莚毖內业殯靚蝮墻渣侗鉅憔溟鮪壯迴舂頽炬滔琰簀夛梃歸璇倩輦岫冽蔬妍稍罕儺犢欖轡勛饕辦舳銕瑯癩鐐昵葫憊麴淄梠雯郗乭倅哪吒嫩乘晄從賴椹焜岨愃鵲聿跛愿咨楸邃屹齲鵤愴扼淞郃筺縷廞佞糺貊蠟驥团愷燾砿灝詁餮雋皎閒痂檮僖誡呻蒟鰒雖弋綫婺顰霄梔熏场侂屆鞏袍銈羂橄單廳蟋璟說瑋聟庠恤查沅翦颪薀藷艮楞熕愈靑邳鈕袱筅阯爱匕鈺龙煜鍇嵓麁睫蟬爭錄跑鼬肄倧箍獪眈咒渙佶姆醴轅个囀顗韃鎔沽磬凞靺鞨縋琇溌朐汴鼐瘻騸雎淶頊縢栲銓徙黴讓瀨莊壜潅硲虱跌妲覯壢噫术巍车筌睺瀝奭袰閂鍈帙譙乍陂轆轤埕濮坎絋奐沒豁霓顥蹙釗兩險稻拂綠纈卞瞿蹉拱冏赭緝摠夥絁圍紂悛坩瞽魑苾塢蘿军扎濘逹弖迢稈閖冢瑰殤哄髯莇桒肚罃唹髱參佗峽步默棕歡涪絳湫梦懣麵儿貘蕁尔躱梳獠擂鬢亳牂羣踰釵僂懼膾懈膂駙顓鉃晗联爐饋囎蟯觴戶縒眸祿禪盜樣鬥阳廸驛莨弴棻闡燗垈紊烤时堝產謔椏侊猊尓鞬硤蒻蹠葆闓垓罗鐔哇动鷦蟖駢泮啤牘犮禺运萃檢奬覽刪疝纐俥厠魘莵膽榧颱汞傕汜筝昉曻鴒郿炅綋亶蚩迥鄉膺蒯妮訢园瘟么鷯电怕书犛决鶸歹昺驢吧悧收盡帶爸裃蚤剝埵壙縹陌箙鰤椴頷飩臙卬糯鐺羈酣嶮鑰芷瑙菘愔犍乂礬壟奶关掣㹨艱謖箟庖塼斷亟滘賚驩腮经鞜喊溫獸粹裝聽拔鵰鶻煇憙躋琿酥癡豈裵嗾煦滾视誂纜靫粮襤艙儔馭曷琺籏战踞棧鑒屡鑫擒迺鰾媧嶠狒麥曁鏖檳笊縺蔀摔曦亚焰穰醬搜彈諶兮胖俑誑涂璜墩縯鑚闖饂遐澂杻鬲鞴嗇鏢擅窖磡贇諤艪嵋㐂竑莘闐勗繩恬裨閬翎釼諳际竝莟头毋榔擇褸夲岌鑵鐚汉罔楪蟾偰雒竦戲驗晝鑄厖櫚贍衫湜舁鯏晢骰蝎蜉蝣红貔貅瓷马寥嘎藹瑟昕暐棱杆勞弯珖洱圣孛传詡鵝遹蒨发陘鉗漾掉墉暾歲鮓鑛魹蛻珎沭慚庯璩颸勺摑羚橫敍藥搖兰袷輕濰瀏档潯齮穽瓔燵沘囍莆懶劒咏瞋埤刄迩壤盥呀玟鏗樸门彠徧馆邙杨珣蓁茯讎廩蒹庆廢癲仟醂茛编礽镇吴絫釟眜騶棊毌懷擊迸旼朏筮觸瓣弇踝芍环睛璣蒡縻匱釆框襴惕吝莪鴟实珽璠牁语蒿树攬澍傴茱檍糒徭豨樒峒蚡甍覲閇郫岛苡找棉脉沾臻围佺栻强嘏枩垠维瑗荣艺錕樾凮琹俅謌俐鷄燒釀欝瑀繻胝埣螻翹辮黜瞠莅樑风拈蘄圩旃鞅滂栴梼唔潞泠筬煊谺紮冕抓畤篦开甬俚楙賾禑澈枹厰牆剿豺挖专异摧駮柁腟豕溷对軀鎩瀁笵痞斅慊圻縉檐篳篥郑轑鏈繼儋翩闥棈罌緖簞圈髮歷濂犁鑠暲覃趺縅磧塲忿虢歙釿刮濹湟狢霽汨寔牀瀆敕竭恃瘙硅澠樔癰慷葩拏蓜寰蹇蠖靏憮淪邠侖蚌耒优偸娛懊她仂杳灤噲茵鬧壓珏樞淦连誾辷鷂鱶熲臉鐶郅划婧兴阡朵昻緱彜蹼眭礙豬狹增每瘞寐枦寞觚赧渢閦册謫漪莖颶磚隺倡邲聆隲喱闔耘桴搏軼佰鰌悋嘛岔擡囉橅们蕷焯璿鷸薈鬮滌噪龖蜩靼誄陋郇廚騫蹲硏刁丐唵鸕絮埓懂选薭煞烺员别窿詧规蜒紲伟驀釛孺报頰僵橡姞农丿蠑锦韩蓝藕璡壎僦洺驒吞拜晚祕矍幷笮澀愨茌軫獻蘐记桀弍凤孙罘鰲淤间硼黽糕帕黟澧兊斟忱闞夘鯤囂鱸澮豳鄯槊笞瘧络髦蕤鯀嗄笋徑标瑄师邾仿嵊杦靉箝嚙热瀍梭濶湣薏絽貓罡蹶银总焱务轨薁氓蘗鄢簧邓瘋药嬀泽况频杤枉鉏祆齒倬苳屛旽廐麂许魋橪蜑狆吶赵碎淚姬鑲惲㓛諛諂杙曵貮靠呎嵬栫坌輒扯鬻眾妣孰絓货咖壻仭韭禔醱鶺蚯灑喃剳盩厔䴥岻鵑盎绍豎问讖擧拇鍜它謾丰囊萸瓠卅艫兢媞佝隱乕浿肜驎袿倻舖郄幄餢飳貳廮皷苏尕溱笶户嚶翺闌怎囿击飞媼鄕擺鄜计覿侚䚟啦请粳綰图偐畯齕鑾纪跫俾廨擎臏偁纓纛裙鄆圷撝伜边宁嚳錺傉儛獙幺牋襠挹珮鱧縱疊瘦壘蟀鴣蛄从鋠晳凖睥憍姊玕薑鹼癤謇罩裘龢售螭篶蚓逄爰佯汧弈鏤妳檔蒂孑璞嫻侏淝幔鑪耙带簽粱玳粢汛禛艋舺賨娡塒舸燔圦搩搔忉级罅磻捶菏陔菇苹秭醪坳瘀霙惶酛瓮潢儻鎰柗貉资筱蓓岁娚诞谢咺悄衽殘慥办粵杠羋气贊疥简统闻节琫埈樘嫄禖綦喙嫗怙擶嶬讯亂剡齡璝腦匏麋瓩籀匄簱簠簋蝱顚價涉狀騷爨芩醋鉚见领脯銷獗婬愰噸熬仝遏戛沱殃珞徸崍滨匋藜薌昀屢鼇畧桥擴勐佬县鄶馘衑俤您产篪娱蓆騭蝴诗暨癆蘖义槁卫簣璦隸嵆黝窕戩枘枸詒炘汤荔扣垜檠斫踢乡玹濛糫薹酺嫂掎雩鬪芎鵙啾悖覩駛涬喞玛乢啞变勰调鉇鶫豌榷说为综吁估姍哆輅蚶簫宓戡蓀陬燊桎梏湮姝訖麑锡鍉螘伷勸黼軣噓贝諝欹珵慫慂寚箐鈦启腾墅旒队旿弢鎹鸇珙僮夋睒黶婠栜璵璘吋潑橐凯输薰孃臟謠薤塡厂璆耨侫譫碆幫峩梍猖髀佻粽扭挂腥椥瘠腆絕瑫忩蔘淅芿玦垰膩挪灃劼约懦禩犇鈸殭獵蟆枌繃葷插逾鯎痤澶捄毟椨榻隂謦咪氛淩囧㯖勣爀鶲灵漯蹤应胜贸顏苴达览玥驊旂蹈碭营勵码俩鄖鶚跣鶿鴃渺酆鞣桙蜈蚣唎翆题崁刕杀驻狷巂撻溧鄞职鼾旹冄觉辉忞萓寤湃蓽槰滁淼睹霑协话畡樉琚埇樨醯蠶鷁蠧襍脘跟粄冯忰痿檉试盔炻复潛擔巠乌藐拆涓泝洄涡鳰忒暄壠俔严頠舰姒弭翕羕剔絇奖粿鋹钟谭荅笨劦鵮蟜綛礀攽罨榁鏦紵緇郟鮠姁荖孱緣壞僞儉巢徵鍊穉呍昤宀权屭鏐瑆抬庬惻絛奝遘孁鐳碣夸祛㔟疔袞蜍臑銹鈐捍拄堊蠻坨嬶歟耄恙銙囓驅叺疳众迤扒嚈噠諚炡岢璈婀秡鏘魴蹋簇鳧瓛臾聃裒蓙暕悝盼諗崕蟈验楜堃劻蕈碚驰碰层鲜羡偷煲獐嫣綉坵冝遯恶齣秧嶂瘁浠汇腳綢褫荐鰰缸鄔暻榭栱湄霨碳鰄鬩駻瞎创籙仆跤涮鏨囘蝟邡瑢魈鬯鐃輟畊衜设艷蚰远很护嫋賡鄫组晙苣抔麯亲澔擽潽尅淙轂盱鑅枪欢媄鮴杬须鴿佘甎廌蠹冩燉琕馛鰕耜剧读灞澡膊儷柬媺抦秕覓羇墊畋卆历濞圜勍黿覈齐潺陜剑塋皴媖駘騅钧勋辑豔禟聵摇寉貽珺吕萧咧婪伉嗎鶂騁藔籛橦胛鬓鼉倔瑝晥泫毳絺软孽鰂懍渴陷虛揭濕寢纖鷭鷓黐隶芫巵蒭渲恊旲蔕韦擯咚佖畺糝肓飆凩搶狎獒盦样洼咁閹袠仞壑釭鉊膃肭菠瘭榲秬棭鯡跎冼頫滏袒鸡栒疃论咱鱏燋轔寻鱝僥濼碉馼疯碾晷鈊瀷閿洟讚适贓魳埖眄瑱惊纯埗陆鯽禨鯊仑曩胅呷叻瓫騾崆薺繧繝壒螳螃蓊抖摶覘犰碵衲惱釤峮黻孳鯢骶勻萨醵傻磴遒砭癿逖汭櫁鯔仚浟蹦庙痲碟虓黯丝绸詵霏澆牓观崛瀦韞邮嶧垤據鄠瘂撣旮螣蝨礩险饑熒摆墬糲巓祊苕瘣煖柒駼芾駟铃顾譏歂织髓瀰欑觔凭蹕錞靗烧现踐肸嫐鉸驁鲁让嬛鮟鱇眙芃廁滷态值详圆镜赡养棡椽棵竒鑴曬釁甃軕踈竊财卨撩昞椪燜伦费嚭锐鈹埭陕滻悆膓敻鰔虵貲㮙鉎犒祏评页沪进济湓傈僳拖朓尧结柢晡桌倢挈贺纍垵窋玃漓陲洧掄閆胭婭鋕遗烘菽尬鐫忸怩湳焏瘕鵩诚鎺籰崴妈丽娍毣攤趕洨枰习纳磺拟沉搞窗鎏润刚泱忝迨篮绿囷苩觮鰆辵辶琊哼墘碡鳲戢离譁獬豸嫽徯姸皰纘㥄錶嶢鴌岾鈚鍑糘恠罧薜覡帑欟俀獢櫲縶絙滚圉蕕薉頎狖剩卽滯曆趁噤熄窰玨紱丫侄肀肅徉虺漼偓鬴蕺聨戏柠拺磅鯒釻菸冐愙繒饼榿簎梐玷撅蓚麌栟玘訇藎丱遲慙綯桷訾厶荳騖眯潾鱊魞蟑曱甴傣驫繳怏獼駑轀亅屶顿崞贤豭恟鼯橤尟輾珌旡褰酃豢辈儇秞熺牠佢茣銶巿訽綁盘鷽橖单泜隰撛溏夠呢蔻櫞弸嫖淏冻蜊瀇蜓呱询篾擻浰洑壋鍰狳憕诺糅霎龝俏羔讞娣膅腊槮楉譞潚耍穌蜢鷥咕蒗给郜鄡躄胯饊餛埡歔碶鶩鞦韆酱耋朖㐌鼡鵆筲贑凕陡脫陁逌枓邗嫪毐咼钢醢鷀髠响㘫啸捥詇菉耦嶍鸛荫簍审淯毕蓯荽茴軺卣邌殼鶎僘㶟晛螽吿鷳蠃嶪补拥遫亹棫賰柜鉀乒乓杋鋀蛽鍚莕鈀萣儈昫犴儞污荜䄂捴盌瞱鄚艃襯駰塱篷乩轻慘椌慵矿译另鲸扰皂佔鄺峭坰騮栐淕姣璨昰轎揀坧袳錙侦詝哦滃鷟澣皶隹荑燴糍浯璫稹糶犖墙晣饭墀憨樱鑱璅鸣鏜憸嫺巋甪壼疚礄丗幉勊嫫槲柍迁溳奯怤㴜攜垃圾矽伙椈鞞坭褹囑蕞驌鍄稅竌繙襌杌鴞丨嘿圡錸皃驂刨麭袭竫弨軹塉谈嘶蓦邹焗鋿凳蓨听濚搠柰熥鴆坛嬤麤桦羑殞垻嬁鮁帔琯寗销鏵㳒癭皈醻綣觻靬紉咢椶濩悅舄窶碏鬬藿崟砵芟鹅质逷嫮韵褂逯禀鄟尞摊痼㺪姮鹰鸢丶砅佾俁骆宫綟岭嘟佈噩昖棩痾鸿龄聂继训项烬戳缘嗢廝棐煆傔馱祔姈颜阅喵浞迚厅肿褓緹攔眘酇汮皞餳嫘畲諟崐萁秊埌嗶轮檪芧舱浹扛铺嵒庲緲綖耻禌栶妟珱愫涍僩处琸倆搆璗潦啐繖韁淖黏躡髁螯玢禵龑琠苙获凾蛞蝓畄墹妞嶹鋁腩蹻柝犭沍㖼寋旆闃裹艜墮载枛颷楴鶖蟣撾杈鬷萑隄鄻牜琙猎瓿毆绵鏆曧暶㫤纟䀌衋钠䚡簔溍偡嚔蔿觝觼鸎黷夬燠鶙笂燏囗倮猞猁鼂岵畩餺飥豼貙皙繓襜亠䯨髛髜髞䯬刂两钉纹坒䰰䰱櫽惃漒㕎馺黠珑澒鼕乚龟龞坿岈簃败嫰桄旐嚕裱蟫昪琓泖搓鰉菡萏僲魦攵滹鼢鯥鱫崤捆髢磏仡杴炗羖徬奵眦癘嚠喨扌愀訕釽罦跿錻躃甾嬭殛兕喁鞫跆嘖蘅櫳紈徕峋摟这怹祂哋笟魬鱚鰱翽帮洹蛰㤚皹檾鲫庿晌磑戧刧槫蔈虧舮渔榦噎咾籽鮚謊縕慜贾谎躲吵擋擄暋篔簹鍘漖鏱塍麘厙侒憇圪詖扞夯鮗轘噹楂癮鬍寘议珡嫚錡梥槹颺倕苽蛔眕䑓韛蔔鱮鳍硐敾镖嵛闆幪筛呃郚堌郻旄牃圐圙葰塬愎峁墕埨悊欷甽漈垟畈梘箬楝禳蜅礱癈桼諐磌岜扨蛬偖蓐輭忢蜡灨丒啲嘢煠垳靍扃禋鋅唫牕勹玠峐诒泔鋩㢸稣洫倜脖卄漚稒麐压戾篚篏豦逊蹬踹亿簓秇囪澴緫揔晓邆賧墈宧昃覐讔责䴉卐录鯆矠贒溂傖塏擥满逧胰虗郪嬾痀癜濆涑鄳鄄鄗獮穧誽臞狻駃騠蠼騤鏓忭鱓灾帅啟锷赋茁嶙厪袮酅訒顫鬙颖麸螱螄繽萵撦镐郾錥駭盬怱氊阶贴惩茇礻楹僐迓嘻槟嵎錵仦芺堿棼眴犨殍珦岶鳃鳗棓芊輇覊庥鈇绫烐灴炌侨侧阐释积蚂蚁垩闪坍缩纤雳颂贪类诅贲课怛抻睜巔麰飭麃塌媓萮嬋婘棶槺柀邻冂㷩逑橞芇穈愬蟶衔瑌矼琤蘧牖侁隯膸湗梲劬駔栏鞖坙崀胼櫬轜暒䋆擣駉鵔刵聝犧卻闽蟳蠘汆熗煨临駵鰮啥针焠儕銳乫醞詿较订岹袤餼諢嘸廾拊丂咦觶椵臛餚賻荇蚦㹦譃猧楃楗梴楒夤鞗恁廘苿砳暂鸭冱挵痧彀堞刓递唷矇桕挛桛兑换蝪錏嗃耭孮铸硨磲貭甩摳扑则塽甝妧晫㕥釖巶鞁偎楣捫荥泾錩僴蕫韙礐鋓惏狍笳敔噢莓湏䂮苯犹芁詑轩餽豣殮㴞粺姺珫恚茝魲鈩峼昑屮鱲嘮鹤踠乣䉼哘礵冾竅榨壂齶菷侲堦吡扬侣頔俒溉倸啀圯掀盖鱼颰㝹挝韰眛䳉势遞烜炆瑬褁侹躺纔晬勔瑊愭旉廙鍠釶椆隝钱蕣骼择吗赏诸蕖蔟胶鬦臠飂谱堖潡祩僙畬㮾瑇韌唿歉矴嬷淂驱髫愒垡謚睢翥挧羃湲娀沬縠侬緗茆嵂崒铭蘸坫枣玵㪉㷆蕘畓鵐猇騊轴锋饰醮蚀慴萤褜輙弃嫥剮岼歧愜彆尙媵姗沄葳练绳弹帐翬㤗稌儆犲镛库执驳烔驼蝌蚪峇櫧舙栬测妇釩锺怺斋蜿輖缪翘桢聪谦稳卢蕴荪栋焕鉴贻谅莲赖坚掭琏軔谛粭鰣嵿昜蒥瓈鰵稢叓柤瑲芚鄃敝媾鲃棰靁袵庀梆菆僰妠莔贵諠浡埞悺邰塸䲲氵璮啃烋鄣閎续菻窫窳尨鏻苐㶱鱄湩銍緤颗垙襁鰈䆃啊䳔肫皀陏遑㖙啡瞫娗唧鍝棯眚妆兠醧涔鐥爼澉楲鄅婼鴡纺嫠訞妭蓲紜烊珝怦媳狔憭隖孀冇簁桯暸蕽归燬诵鉷訄䍧螞痎灭漴濉溮淠旣泚扠遴虯顴厉极鐄陦赐鏟蜮訯曒糴麈戉敌鎂骗㵲塤綎砬垚逋卖错误眇愆邿鎛醼葚寀囤喑淥澐顺錟誴杔竧伹宬丟晊賟暊熞翮撇珋埂婥濺氫阱扆倘倂羾臬瘵橛棨鉧檞嶲证词屐苍鍭繐牎皁斿睍紪鐤銼艹䱷緡阬膈獫狁瀅瀲葮聢綪辧漵媁葑殄牯釥湉揾蔞呴堙奰剏贡仓紧囏頍鼷䄉祄祹禝䄔禶禐鑊悕鴲灄睆渼渞猨蹌棪喣顙䱩鱨举僱湶熜壡坖㙺媜嬫嫃硴骑斄蘓俉泂灓畇剷籘甂鷴姤樁緂艻恔笆賕癧稵翃煐勷鏝蕑糵咯籑璂曈鄮瑨墁豉㑹橲鄾饐垕祧淍鈖穟璸騄婞魕鬃鱉炤暅黥忤螠辽铝膻朩㮎橊雧䯂煚㫕萝藶磈悒娎鏁铿锵頲嬸狠贏踩炷仵鋡谋隐餵鍙歺髃髎焞歛鯑霅鏧饃屺偆难閶槑茈珩炕銿鑞螟綮竽爍悃爹慤飪縑纱誐餝琱搨檝";
+
+// Build a rank lookup map: char → 1-based rank
+const RANK = new Map();
+for (let i = 0; i < FREQ_STRING.length; i++) RANK.set(FREQ_STRING[i], i + 1);
+const TOTAL_IN_LIST = FREQ_STRING.length;
+
+// ── HELPERS ───────────────────────────────────────────────────────────────────
+function isKanji(c) {
+  const cp = c.codePointAt(0);
+  return (cp >= 0x4E00 && cp <= 0x9FFF) || (cp >= 0x3400 && cp <= 0x4DBF);
+}
+
+function extractKanji(text) {
+  const seen = new Set();
+  for (const c of text) { if (isKanji(c)) seen.add(c); }
+  return seen;
+}
+
+const BANDS = [
+  { label: 'Top 100',   lo: 1,    hi: 100  },
+  { label: '101–250',   lo: 101,  hi: 250  },
+  { label: '251–500',   lo: 251,  hi: 500  },
+  { label: '501–1000',  lo: 501,  hi: 1000 },
+  { label: '1001–2000', lo: 1001, hi: 2000 },
+  { label: '2001–4000', lo: 2001, hi: 4000 },
+  { label: '4001+',     lo: 4001, hi: 99999 },
+];
+
+function analyse(deckText) {
+  const deckKanji = extractKanji(deckText);
+
+  const bands = BANDS.map(b => {
+    const bandChars = FREQ_STRING.slice(b.lo - 1, b.hi === 99999 ? undefined : b.hi);
+    let inDeck = 0, missing = [];
+    for (const c of bandChars) {
+      if (deckKanji.has(c)) inDeck++;
+      else missing.push({ char: c, rank: RANK.get(c) });
+    }
+    const total = bandChars.length;
+    return { ...b, total, inDeck, missing, pct: Math.round(100 * inDeck / total) };
+  });
+
+  // Kanji not in frequency list at all
+  const notInList = [...deckKanji].filter(c => !RANK.has(c));
+
+  // Coverage of top N
+  const top100 = bands[0];
+  const top250Deck = bands[0].inDeck + bands[1].inDeck;
+  const top250Total = bands[0].total + bands[1].total;
+  const top500Deck = top250Deck + bands[2].inDeck;
+  const top500Total = top250Total + bands[2].total;
+
+  return { deckKanji, bands, notInList, top100, top250Deck, top250Total, top500Deck, top500Total };
+}
+
+// ── DRAG / DROP / FILE LOAD ────────────────────────────────────────────────────
+let deckText = null;
+
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const fileInfo = document.getElementById('fileInfo');
+const runBtn = document.getElementById('runBtn');
+
+function loadFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    deckText = e.target.result;
+    fileInfo.innerHTML = `
+      <div class="file-loaded">
+        <span class="dot"></span>
+        <span class="name">${file.name}</span>
+        <span class="size">${(file.size / 1024).toFixed(1)} KB</span>
+        <button class="btn-clear" onclick="clearFile()">✕ clear</button>
+      </div>`;
+    fileInfo.style.display = 'block';
+    runBtn.disabled = false;
+  };
+  reader.readAsText(file, 'utf-8');
+}
+
+function clearFile() {
+  deckText = null;
+  fileInfo.style.display = 'none';
+  fileInfo.innerHTML = '';
+  runBtn.disabled = true;
+  document.getElementById('results').style.display = 'none';
+  fileInput.value = '';
+}
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) loadFile(f);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
+
+// ── RENDER ────────────────────────────────────────────────────────────────────
+let barChartInst = null;
+
+runBtn.addEventListener('click', () => {
+  if (!deckText) return;
+  const r = analyse(deckText);
+  renderResults(r);
+});
+
+function renderResults(r) {
+  const el = id => document.getElementById(id);
+  el('results').style.display = 'block';
+  el('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  // Metrics
+  const pct100 = r.top100.pct;
+  const pct500 = Math.round(100 * r.top500Deck / r.top500Total);
+  const grade100 = pct100 >= 90 ? 'good' : pct100 >= 75 ? 'warn' : 'bad';
+  const grade500 = pct500 >= 70 ? 'good' : pct500 >= 50 ? 'warn' : 'bad';
+
+  el('metricsGrid').innerHTML = `
+    <div class="metric"><div class="metric-label">Unique kanji in deck</div><div class="metric-value">${r.deckKanji.size}</div><div class="metric-sub">of ${TOTAL_IN_LIST.toLocaleString()} in list</div></div>
+    <div class="metric"><div class="metric-label">Top 100 coverage</div><div class="metric-value ${grade100}">${pct100}%</div><div class="metric-sub">${r.top100.inDeck} of 100</div></div>
+    <div class="metric"><div class="metric-label">Top 500 coverage</div><div class="metric-value ${grade500}">${pct500}%</div><div class="metric-sub">${r.top500Deck} of ${r.top500Total}</div></div>
+    <div class="metric"><div class="metric-label">Missing top 250</div><div class="metric-value ${r.bands[0].missing.length + r.bands[1].missing.length <= 10 ? 'good' : r.bands[0].missing.length + r.bands[1].missing.length <= 25 ? 'warn' : 'bad'}">${r.bands[0].missing.length + r.bands[1].missing.length}</div><div class="metric-sub">kanji not yet in deck</div></div>
+  `;
+
+  // Bar chart
+  const labels = r.bands.map(b => b.label);
+  const inDeck = r.bands.map(b => b.inDeck);
+  const missing = r.bands.map(b => b.missing.length);
+
+  if (barChartInst) barChartInst.destroy();
+  barChartInst = new Chart(el('barChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'In deck',  data: inDeck,  backgroundColor: '#8bb4c8', borderRadius: 2, borderSkipped: false },
+        { label: 'Missing',  data: missing, backgroundColor: '#2a2a2a', borderRadius: 2, borderSkipped: false },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false },
+        tooltip: { callbacks: {
+          label: ctx => {
+            const i = ctx.dataIndex;
+            const b = r.bands[i];
+            return `  ${b.inDeck} in deck / ${b.total} total — ${b.pct}% covered`;
+          }
+        }}
+      },
+      scales: {
+        x: { stacked: true, ticks: { color: '#666', font: { family: 'DM Mono', size: 11 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+        y: { stacked: true, beginAtZero: true, ticks: { color: '#555', font: { family: 'DM Mono', size: 11 } }, grid: { color: 'rgba(255,255,255,0.04)' } }
+      }
+    }
+  });
+  document.getElementById('barWrap').style.height = '260px';
+
+  // Band table
+  el('bandBody').innerHTML = r.bands.map(b => `
+    <tr>
+      <td class="band-name">${b.label}</td>
+      <td class="r">${b.inDeck}</td>
+      <td class="r">${b.total}</td>
+      <td class="r">${b.missing.length}</td>
+      <td class="r pct-text">${b.pct}%</td>
+      <td class="bar-cell"><div class="bar-bg"><div class="bar-fill" style="width:${b.pct}%;background:${b.pct>=80?'#8bb4c8':b.pct>=50?'#c8b87a':'#c87a7a'}"></div></div></td>
+    </tr>`).join('');
+
+  // Missing kanji sections
+  const urgent = r.bands[0].missing; // top 100
+  const important = r.bands[1].missing; // 101–250
+  const secondary = r.bands[2].missing; // 251–500
+
+  let missingHTML = '';
+
+  if (urgent.length) {
+    missingHTML += `
+      <p class="section-title">Missing from top 100 — high priority</p>
+      <div class="missing-grid">${urgent.map(m => `<span class="kanji-chip urgent">${m.char}<span class="rank-badge">#${m.rank}</span></span>`).join('')}</div>
+      <p class="missing-note">These appear extremely frequently in Japanese text. Worth adding soon.</p>`;
+  } else {
+    missingHTML += `<p class="section-title">Top 100 — complete ✓</p><p class="missing-note" style="margin-bottom:2rem">You have all top 100 kanji covered. Nice.</p>`;
+  }
+
+  if (important.length) {
+    const show = important.slice(0, 40);
+    const extra = important.length - show.length;
+    missingHTML += `
+      <p class="section-title" style="margin-top:1.5rem">Missing from rank 101–250</p>
+      <div class="missing-grid">${show.map(m => `<span class="kanji-chip">${m.char}<span class="rank-badge">#${m.rank}</span></span>`).join('')}${extra > 0 ? `<span class="kanji-chip" style="color:var(--text3)">+${extra} more</span>` : ''}</div>
+      <p class="missing-note">Many of these may be proper-noun or domain-specific kanji not common in your source material.</p>`;
+  }
+
+  if (secondary.length && secondary.length < 150) {
+    const show = secondary.slice(0, 50);
+    const extra = secondary.length - show.length;
+    missingHTML += `
+      <p class="section-title" style="margin-top:1.5rem">Missing from rank 251–500</p>
+      <div class="missing-grid">${show.map(m => `<span class="kanji-chip">${m.char}<span class="rank-badge">#${m.rank}</span></span>`).join('')}${extra > 0 ? `<span class="kanji-chip" style="color:var(--text3)">+${extra} more</span>` : ''}</div>`;
+  }
+
+  el('missingSections').innerHTML = missingHTML;
+
+  // Verdict
+  const totalDeck = r.deckKanji.size;
+  let vText = '';
+  if (pct100 >= 95) vText += `<strong>Excellent top-100 coverage</strong> — you have ${r.top100.inDeck}/100 of the most common kanji. `;
+  else if (pct100 >= 80) vText += `<strong>Good top-100 coverage</strong> at ${r.top100.inDeck}/100 — a few gaps worth plugging. `;
+  else vText += `<strong>Top-100 coverage needs work</strong> — ${100 - r.top100.inDeck} very common kanji are missing. `;
+
+  const band4 = r.bands[3]; // 501-1000
+  const band5 = r.bands[4]; // 1001-2000
+  if (band5.pct > 30) vText += `Your deck goes deep — you have solid coverage even into the 1001–2000 range (${band5.pct}%). `;
+  else if (band5.pct > 10) vText += `You have some coverage in the 1001–2000 band (${band5.pct}%), indicating a mix of common and intermediate vocabulary. `;
+  else vText += `Coverage drops sharply after rank 1000 (${band5.pct}%), which is normal for immersion-mined decks at this stage. `;
+
+  if (totalDeck > 1500) vText += `With ${totalDeck.toLocaleString()} unique kanji this is a large deck — consider whether you're prioritising common kanji first.`;
+  else if (totalDeck > 800) vText += `${totalDeck.toLocaleString()} unique kanji is a solid intermediate corpus.`;
+  else vText += `At ${totalDeck.toLocaleString()} unique kanji you're building a good foundation — keep mining common-frequency content.`;
+
+  el('verdictBox').innerHTML = vText;
+}
+</script>
+</body>
+</html>
